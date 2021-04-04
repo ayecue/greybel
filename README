@@ -2,7 +2,7 @@
 
 Grey Script preprocessor. Which adds new features to Grey Script.
 
-<b>Note:</b> Currently this only implements importing files. Other features are not implemented yet. Since this is rather a POC.
+**Note:** Currently this only implements importing files. Other features are not implemented yet. Since this is rather a POC.
 
 Features:
 - import files, used to load other files into script
