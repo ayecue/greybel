@@ -1,0 +1,12 @@
+BACK_SLASH_CHAR = "\"
+NEW_LINE_OPERATOR = BACK_SLASH_CHAR + "n"
+MODULES = {}
+EXPORTED = {}
+
+__REQUIRE = function(r)
+  if (MODULES.hasIndex(r) == false) then
+    exit("Module " + r + " cannot be found...")
+  end if
+  module = MODULES[r]
+  return module(r)
+end function

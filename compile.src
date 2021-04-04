@@ -1,0 +1,619 @@
+NEW_LINE_OPERATOR = "\n"
+ARGV_OPERATOR = "-"
+
+Config = {}
+
+Config.load = function()
+	path = (new String).constructor("$0/Config/compile.conf")
+	path = path.parse([home_dir]).toString()
+	file = get_shell.host_computer.File(path)
+	if (file == null) then
+		(new Error).constructor("No config in $0...", [path]).throw()
+	end if
+	content = file.get_content
+	lines = content.split(NEW_LINE_OPERATOR)
+	map = {}
+
+	for line in lines
+		def = line.split("=")
+		name = def.pull()
+		value = def.pull()
+		map[name] = value
+	end for
+
+	self.map = map
+
+	return map
+end function
+
+Config.set = function(key, value)
+	if (self.hasIndex("map") and value != null) then
+		self.map[key] = value
+	end if
+	return self
+end function
+
+Config.get = function(key)
+	if (self.hasIndex("map")) then
+		return self.map[key]
+	end if
+	return null
+end function
+
+Config.getScriptFolder = function()
+	path = (new String).constructor(Config.get("SCRIPT_FOLDER"))
+	user = active_user
+	return path.parse([user]).toString()
+end function
+
+Config.getTempFolder = function()
+	path = (new String).constructor(Config.get("TEMP_FOLDER"))
+	user = active_user
+	return path.parse([user]).toString()
+end function
+
+Config.getCompilerFolder = function()
+	path = (new String).constructor(Config.get("COMPILER_FOLDER"))
+	user = active_user
+	return path.parse([user]).toString()
+end function
+
+Config.getExtension = function()
+	return Config.get("SCRIPT_EXTENSION")
+end function
+
+Config.isDebugMode = function()
+	value = Config.get("DEBUG")
+	if (typeof(value) == "string") then
+		return value == "true"
+	end if
+	return value
+end function
+
+Config.getBoilerplateFile = function(boilerplate)
+	pathHelper = new Path
+	path = (new String).constructor(Config.get("BOILERPLATE_FOLDER"))
+	return pathHelper.join(Config.getCompilerFolder(), path.parse([boilerplate]).toString())
+end function
+
+Config.getBinFolder = function()
+	return Config.get("BIN_FOLDER")
+end function
+
+debug = function(msg)
+	if (Config.isDebugMode()) then
+		print(msg)
+	end if
+end function
+
+String = {}
+
+String.constructor = function(str)
+	self.str = str
+	return self
+end function
+
+String.parse = function(values)
+	result = self.str
+	index = 0
+	maxIndex = values.len
+
+	while index < maxIndex
+		result = result.replace("$"+index, values[index])
+		index = index + 1
+	end while
+
+	return (new String).constructor(result)
+end function
+
+String.startsWith = function(str)
+	return self.str.indexOf(str) == 0
+end function
+
+String.substr = function(startIndex, endIndex)
+	return (new String).constructor(slice(self.str, startIndex, endIndex))
+end function
+
+String.indexOf = function(str)
+	return self.str.indexOf(str)
+end function
+
+String.replace = function(str, newStr)
+	return (new String).constructor(self.str.replace(str, newStr))
+end function
+
+String.remove = function(str)
+	return (new String).constructor(self.str.remove(str))
+end function
+
+String.toString = function()
+	return self.str
+end function
+
+String.length = function()
+	return self.str.len
+end function
+
+String.split = function(seperator)
+	return self.str.split(seperator)
+end function
+
+String.trim = function(seperator)
+	return (new String).constructor(self.str.trim())
+end function
+
+Error = {}
+
+Error.constructor = function(message, values)
+	self.message = message
+	if (values != null) then
+		self.message = (new String.constructor(message)).parse(values).toString()
+	end if
+	return self
+end function
+
+Error.throw = function()
+	exit("<color=#ff0000>" + self.message + "</color>")
+end function
+
+ArgType = {}
+
+ArgType.FLAG = "FLAG"
+ArgType.VALUE = "VALUE"
+
+Arg = {}
+
+Arg.constructor = function(shortcut, command, type, description)
+	self.shortcut = shortcut
+	self.command = command
+	self.type = type
+	self.description = description
+	return self
+end function
+
+Arg.toString = function()
+	str = (new String).constructor("-$0 --$1 - <b>$2</b>")
+	return str.parse([self.shortcut, self.command, self.description]).toString()
+end function
+
+Argv = {}
+
+Argv.constructor = function(defs, help)
+	self.args = params
+	self.listed = {}
+	self.unlisted = []
+	self.defs = defs
+	self.help = help
+	return self
+end function
+
+Argv.parse = function()
+	args = self.args
+	defs = self.defs
+	listed = {}
+	unlisted = []
+	index = 0
+	maxIndex = args.len
+	findDef = function(arg)
+		for def in defs
+			if (ARGV_OPERATOR + ARGV_OPERATOR + def.command == arg or ARGV_OPERATOR + def.shortcut == arg) then
+				return def
+			end if
+		end for
+		return null
+	end function
+
+	while index < maxIndex
+		item = args[index].trim()
+		def = findDef(item)
+		if (def == null) then
+			unlisted.push(item)
+		else
+			if (def.type == ArgType.VALUE) then
+				index = index + 1
+				value = args[index]
+				listed[def.command] = value
+			else if (def.type == ArgType.FLAG) then
+				listed[def.command] = true
+			end if
+		end if
+		index = index + 1
+	end while
+
+	self.listed = listed
+	self.unlisted = unlisted
+
+	return self
+end function
+
+Argv.get = function(index = 0, mandatory = false)
+	if self.unlisted.hasIndex(index) then
+		return self.unlisted[index]
+	end if
+	if mandatory then
+		(new Error).constructor("Error cannot find param[$0]\n\n$1", [index, self.help]).throw()
+	end if
+	return null
+end function
+
+Argv.getWithKey = function(key)
+	if self.listed.hasIndex(key) then
+		return self.listed[key]
+	end if
+	return null
+end function
+
+Math = {}
+
+Math.random = function(min, max)
+	return floor((rnd * max) + min)
+end function
+
+IdGenerator = {}
+
+IdGenerator.getChars = function()
+	return "QWERTZUIOPASDFGHJKLYXCVBNMqwertzuiopasdfghjklyxcvbnm1234567890";
+end function
+
+IdGenerator.get = function()
+	math = new Math
+	chars = self.getChars()
+
+	result = []
+	indexA = 0
+	maxA = 4
+
+	while indexA < maxA
+		indexB = 0
+		maxB = 5
+		code = ""
+
+		while indexB < maxB
+			code = code + chars[math.random(0, chars.len - 1)]
+
+			indexB = indexB + 1
+		end while
+
+		result.push(code)
+
+		indexA = indexA + 1
+	end while
+
+	return result.join("")
+end function
+
+Path = {}
+
+Path.join = function(a, b)
+	return [a, b].join("/")
+end function
+
+FS = {}
+
+FS.constructor = function(computer)
+	self.computer = computer
+	return self
+end function
+
+FS.createFile = function(path, name)
+	self.computer.touch(path, name)
+	return self.computer.File(Path.join(path, name))
+end function
+
+ASTImportCommand = {}
+
+ASTImportCommand.constructor = function(file)
+	self.file = file
+	return self
+end function
+
+ASTCommand = {}
+
+ASTCommand.constructor = function(line, str, key, action)
+	self.line = line
+	self.str = str
+	self.key = key
+	self.action = action
+	return self
+end function
+
+ASTRegistry = {}
+
+ASTRegistry.import = ASTImportCommand
+
+AST = {}
+
+AST.constructor = function(computer, file)
+	self.computer = computer
+	self.file = file
+	self.lines = []
+	self.commands = []
+	return self
+end function
+
+AST.analyze = function()
+	debug("Analyzing AST...")
+	content = self.file.get_content
+	commands = []
+	lines = content.split(NEW_LINE_OPERATOR)
+	index = 0
+
+	for line in lines
+		str = (new String).constructor(line)
+
+		if (str.startsWith(Config.get("COMMAND_START"))) then
+			command = str.substr(1, str.indexOf(" "))
+			key = command.toString()
+
+			if (ASTRegistry[key] == null) then
+				(new Error).constructor("Invalid command $0 on line $1", [key, index]).throw()
+			end if
+
+			action = ASTRegistry[key]
+			entry = (new ASTCommand).constructor(index, str, key, new action)
+			commands.push(entry)
+		end if
+
+		index = index + 1
+	end for
+
+	self.lines = lines
+	self.commands = commands
+
+	return commands
+end function
+
+AST.transform = function(line, code)
+	self.lines = self.lines[0:line] + [code] + self.lines[line + 1:]
+
+	return self.lines
+end function
+
+AST.getCommands = function()
+	return self.commands
+end function
+
+Dependency = {}
+
+Dependency.constructor = function(computer, file, ast)
+	pathHelper = new Path
+
+	self.computer = computer
+	self.target = file
+	self.basePath = file.parent.path
+	self.ast = ast
+	self.dependencies = []
+
+	if self.target == null then
+		(new Error).constructor("Dependency $0 does not exist...", [file.path]).throw()
+	end if
+
+	return self
+end function
+
+Dependency.findDependencies = function()
+	debug("Finding dependencies...")
+	pathHelper = new Path
+	commands = self.ast.getCommands()
+	result = []
+
+	for command in commands
+		if (command.key == "import") then
+			path = command.str.substr(command.str.indexOf("from") + 4, command.str.indexOf(";")).toString()
+
+			if (path == null) then
+				(new Error).constructor("Invalid import on line $0 in $1...", [command.line, self.target.path]).throw()
+			end if
+
+			filePath = pathHelper.join(self.basePath, path.trim() + "." + Config.getExtension())
+			file = self.computer.File(filePath)
+
+			command.action.constructor(file)
+
+			ast = (new AST).constructor(self.computer, file)
+			ast.analyze()
+
+			dependency = (new Dependency).constructor(self.computer, file, ast)
+			dependency.findDependencies()
+
+			result.push(dependency)
+		end if
+	end for
+
+	self.dependencies = result
+
+	return result
+end function
+
+Preprocessor = {}
+
+Preprocessor.constructor = function(computer, dependency)
+	self.computer = computer
+	self.dependency = dependency
+	return self
+end function
+
+Preprocessor.run = function()
+	debug("Run preprocessor...")
+	pathHelper = new Path
+	mainDependency = self.dependency
+	mainModuleName = md5(mainDependency.target.path)
+	headerBoilerplate = self.computer.File(Config.getBoilerplateFile("header")).get_content
+	moduleBoilerplate = self.computer.File(Config.getBoilerplateFile("module")).get_content
+	mainBoilerplate = self.computer.File(Config.getBoilerplateFile("main")).get_content
+	modules = {}
+	iterator = function(item)
+		moduleName = md5(item.target.path)
+
+		if (modules.hasIndex(moduleName)) then
+			return
+		end if
+
+		commands = item.ast.getCommands()
+
+		for command in commands
+			if (command.key == "import") then
+				importIndex = command.str.indexOf("import")
+				fromIndex = command.str.indexOf("from")
+				defVar = command.str.substr(importIndex + 6, fromIndex).trim().toString()
+				defId = md5(command.action.file.path)
+				code = (new String).constructor("$0 = __REQUIRE(""$1"")").parse([defVar, defId])
+
+				item.ast.transform(command.line, code.toString())
+			end if
+		end for
+
+		if (moduleName != mainModuleName) then
+			transformedCode = item.ast.lines.join(NEW_LINE_OPERATOR)
+			moduleCode = (new String).constructor(moduleBoilerplate)
+			modules[moduleName] = moduleCode.parse([moduleName, transformedCode]).toString()
+		end if
+
+		for dependency in item.dependencies
+			iterator(dependency)
+		end for
+	end function
+
+	iterator(mainDependency)
+
+	processed = headerBoilerplate
+
+	for module in modules.values
+		processed = processed + module
+	end for
+
+	transformedCode = mainDependency.ast.lines.join(NEW_LINE_OPERATOR)
+	moduleCode = (new String).constructor(mainBoilerplate)
+	processed = processed + moduleCode.parse([transformedCode]).toString()
+
+	return processed
+end function
+
+Compiler = {}
+
+Compiler.constructor = function(computer, name)
+	idGenerator = new IdGenerator
+
+	self.buildId = idGenerator.get()
+	self.name = name
+	self.computer = computer
+	self.target = computer.File(self.getFullScriptFilePath())
+
+	return self
+end function
+
+Compiler.isTargetExisting = function()
+	return self.target != null
+end function
+
+Compiler.getScriptFilePath = function()
+	return self.name + "." + Config.getExtension()
+end function
+
+Compiler.getFullScriptFilePath = function()
+	path = new Path
+	return path.join(Config.getScriptFolder(), self.getScriptFilePath())
+end function
+
+Compiler.getFullTempFilePath = function()
+	path = new Path
+	return path.join(Config.getTempFolder(), self.getScriptFilePath())
+end function
+
+Compiler.preprocess = function()
+	debug("Start processing...")
+	file = self.computer.File(self.getFullScriptFilePath())
+	ast = (new AST).constructor(self.computer, file)
+	ast.analyze()
+	dependency = (new Dependency).constructor(self.computer, file, ast)
+	dependency.findDependencies()
+	preprocessor = (new Preprocessor).constructor(self.computer, dependency)
+	return preprocessor.run()
+end function
+
+Compiler.compile = function(shell)
+	pathHelper = new Path
+	fs = (new FS).constructor(self.computer)
+	buildPath = pathHelper.join(Config.getTempFolder(), self.buildId)
+	buildPathFull = pathHelper.join(buildPath, self.getScriptFilePath())
+
+	self.computer.create_folder(Config.getTempFolder(), self.buildId)
+
+	print("Build id: " + self.buildId)
+
+	newFile = fs.createFile(buildPath, self.getScriptFilePath())
+
+	if newFile == null then
+		exit("Unable to create file...")
+	end if
+
+	content = self.preprocess()
+
+	newFile.set_content(content)
+
+	print("Building in " + Config.getBinFolder() + "...")
+
+	buildReport = shell.build(buildPathFull, Config.getBinFolder())
+
+	compiledBuildPathFull = pathHelper.join(Config.getBinFolder(), self.name)
+	if self.computer.File(compiledBuildPathFull) == null then
+		(new Error).constructor("Built failed: $0", [buildReport]).throw()
+	end if
+end function
+
+main = function(name)
+	myShell = get_shell
+	myComputer = myShell.host_computer
+
+	compiler = (new Compiler).constructor(myComputer, name)
+
+	if compiler.isTargetExisting == false then
+		(new Error).constructor("Cannot find file.").throw()
+	end if
+
+	content = compiler.compile(myShell)
+end function
+
+Config.load()
+
+argDefinitions = []
+
+argDefinitions.push((new Arg).constructor("h", "help", ArgType.FLAG, "Print help"))
+argDefinitions.push((new Arg).constructor("d", "debug", ArgType.FLAG, "Activate debug mode"))
+argDefinitions.push((new Arg).constructor("cs", "command-start", ArgType.VALUE, "Command starting operator"))
+argDefinitions.push((new Arg).constructor("s", "script-folder", ArgType.VALUE, "Script folder"))
+argDefinitions.push((new Arg).constructor("t", "temp-folder", ArgType.VALUE, "Temporary folder"))
+argDefinitions.push((new Arg).constructor("c", "compiler-folder", ArgType.VALUE, "Compiler folder"))
+argDefinitions.push((new Arg).constructor("b", "bin-folder", ArgType.VALUE, "Bin folder"))
+argDefinitions.push((new Arg).constructor("se", "script-extension", ArgType.VALUE, "Script extension"))
+
+helpBlock = []
+
+helpBlock.push("Compiler CLI")
+helpBlock.push("Version: " + Config.get("VERSION"))
+helpBlock.push("Example: <b>compile myscriptfile</b>")
+helpBlock.push("")
+
+for argDefinition in argDefinitions
+	helpBlock.push(argDefinition.toString())
+end for
+
+help = helpBlock.join("\n")
+
+argv = (new Argv).constructor(argDefinitions, help)
+
+argv.parse()
+
+if (argv.getWithKey("help") == true) then
+	exit(help)
+end if
+
+for argDefinition in argDefinitions
+	key = argDefinition.command.upper.replace("-", "_")
+	value = argv.getWithKey(argDefinition.command)
+	Config.set(key, value)
+end for
+
+debug("Start compiling...")
+main(argv.get(0, true))
+exit("Done compiling...")
