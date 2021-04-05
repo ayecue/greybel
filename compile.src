@@ -285,6 +285,9 @@ end function
 Path = {}
 
 Path.join = function(a, b)
+	if (b.indexOf("/") == 0) then
+		b = b[1:]
+	end if
 	return [a, b].join("/")
 end function
 
