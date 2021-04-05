@@ -1,6 +1,8 @@
-# Greybel 0.1.0.0
+# Greybel 0.1.1.0
 
 Grey Script preprocessor. Which adds new features to Grey Script.
+
+For examples lookup [this repository](https://github.com/ayecue/greyscript-library).
 
 **Note:** Currently this only implements importing files. Other features are not implemented yet. Since this is rather a POC.
 
@@ -11,25 +13,22 @@ Features:
 
 # Install
 
-To make things a little bit more easy there's a installer file.
+To make things a little bit more easy there's a installer file. First you have to build it though.
+```
+chmod +x build.sh
+./build.sh
+```
+Now you copy the content of the installer file to Grey Hack and execute the installer.
 ```
 build installer.src /usr/bin
 installer
 ```
-This should create all necessary folders and files. You still have to copy paste the content of the compile file and the boilerplates.
-
-Files to be copied:
-```
-compile.src
-/boilderplates/header.src
-/boilderplates/module.src
-/boilderplates/main.src
-```
+This should create all necessary folders and files.
 
 # CLI Usage
 ```
 Compiler CLI
-Version: 0.1.0.0
+Version: 0.1.1.0
 Example: compile myscriptfile
 
 -h --help - Print help

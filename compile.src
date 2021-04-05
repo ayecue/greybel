@@ -1,4 +1,5 @@
-NEW_LINE_OPERATOR = "\n"
+BACKSLASH_CODE = 92
+NEW_LINE_OPERATOR = char(BACKSLASH_CODE) + "n"
 ARGV_OPERATOR = "-"
 
 Config = {}
@@ -231,7 +232,7 @@ Argv.get = function(index = 0, mandatory = false)
 		return self.unlisted[index]
 	end if
 	if mandatory then
-		(new Error).constructor("Error cannot find param[$0]\n\n$1", [index, self.help]).throw()
+		(new Error).constructor("Error cannot find param[$0]$1$2$3", [index, NEW_LINE_OPERATOR, NEW_LINE_OPERATOR, self.help]).throw()
 	end if
 	return null
 end function
@@ -505,17 +506,17 @@ Preprocessor.run = function()
 
 	iterator(mainDependency)
 
-	processed = headerBoilerplate
+	processed = [headerBoilerplate]
 
 	for module in modules.values
-		processed = processed + module
+		processed.push(module)
 	end for
 
 	transformedCode = mainDependency.ast.lines.join(NEW_LINE_OPERATOR)
 	moduleCode = (new String).constructor(mainBoilerplate)
-	processed = processed + moduleCode.parse([transformedCode]).toString()
+	processed.push(moduleCode.parse([transformedCode]).toString())
 
-	return processed
+	return processed.join(NEW_LINE_OPERATOR + NEW_LINE_OPERATOR)
 end function
 
 Compiler = {}
@@ -627,7 +628,7 @@ for argDefinition in argDefinitions
 	helpBlock.push(argDefinition.toString())
 end for
 
-help = helpBlock.join("\n")
+help = helpBlock.join(NEW_LINE_OPERATOR)
 
 argv = (new Argv).constructor(argDefinitions, help)
 
