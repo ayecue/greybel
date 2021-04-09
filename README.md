@@ -22,6 +22,7 @@ Now you copy the content of the installer file to Grey Hack and execute the inst
 ```
 build installer.src /usr/bin
 installer
+build /home/user-folder/compiler/compile.src /usr/bin
 ```
 This should create all necessary folders and files.
 

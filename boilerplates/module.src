@@ -5,7 +5,7 @@ MODULES["$0"] = function(r)
     module = EXPORTED[r]
   end if
 
-  if (module.hasIndex("exports") == false) then
+  if (not module.hasIndex("exports")) then
     $1
   end if
 

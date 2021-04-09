@@ -597,7 +597,7 @@ main = function(name)
 
 	compiler = (new Compiler).constructor(myComputer, name)
 
-	if compiler.isTargetExisting == false then
+	if not compiler.isTargetExisting then
 		(new Error).constructor("Cannot find file.").throw()
 	end if
 

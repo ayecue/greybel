@@ -37,7 +37,7 @@ function write_file() {
   echo "Importing file $(realpath $1)..."
   echo "lines = []" >> $file
   n=1
-  while read line; do
+  while read -r line || [ -n "$line" ]; do
     find="\""
     replace="\"\""
     newLines=$(sed "s+${find}+${replace}+g" <<< "$line")
