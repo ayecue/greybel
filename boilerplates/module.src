@@ -1,15 +1,15 @@
 MODULES["$0"] = function(r)
-  module = {}
+	module = {}
 
-  if (EXPORTED.hasIndex(r)) then
-    module = EXPORTED[r]
-  end if
+	if (EXPORTED.hasIndex(r)) then
+		module = EXPORTED[r]
+	end if
 
-  if (not module.hasIndex("exports")) then
-    $1
-  end if
+	if (not module.hasIndex("exports")) then
+		$1
+	end if
 
-  EXPORTED[r] = module
+	EXPORTED[r] = module
 
-  return module.exports
+	return EXPORTED[r]
 end function

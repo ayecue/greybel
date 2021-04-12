@@ -1,15 +1,15 @@
-# Greybel 0.1.1.0
+# Greybel 0.2.0.0
 
-Grey Script preprocessor. Which adds new features to Grey Script.
+GreyScript preprocessor ([GreyHack](https://store.steampowered.com/app/605230/Grey_Hack/). Which adds new features to GreyScript.
 
 For examples lookup [this repository](https://github.com/ayecue/greyscript-library).
-
-**Note:** Currently this only implements importing files. Other features are not implemented yet. Since this is rather a POC.
 
 Features:
 - import files, used to load other files into script
 - building creates temporary file for better debugging
 - wraps imported files in function block to prevent variable shadowing
+- include which unlike import just copy paste its content
+- envar which puts values from an env file into the script
 
 # Install
 
@@ -29,24 +29,51 @@ This should create all necessary folders and files.
 # CLI Usage
 ```
 Compiler CLI
-Version: 0.1.1.0
+Version: 0.2.0.0
 Example: compile myscriptfile
 
 -h --help - Print help
 -d --debug - Activate debug mode
 -cs --command-start - Command starting operator
--s --script-folder - Script folder
+-ce --command-end - Command ending operator
 -t --temp-folder - Temporary folder
 -c --compiler-folder - Compiler folder
 -b --bin-folder - Bin folder
 -se --script-extension - Script extension
+-no --no-output - No output
+-sx --suffix - Suffix
+-ev --env-file - Environment varibales file
 ```
-Keep in mind that the script file has to be in the script folder which is defined in the configuration file. By default it should be `/home/user-folder/scripts`. The compile is not using an absolute path but the relative path from the script folder.
+
+**OUTDATED**: Keep in mind that the script file has to be in the script folder which is defined in the configuration file. By default it should be `/home/user-folder/scripts`. The compile is not using an absolute path but the relative path from the script folder. (**Since version 0.2.0.0 myscriptfile just uses the given filepath**)
+
+## Examples:
+### Most common build command:
+```
+//Build file will be available in TEMP_FOLDER/BUILD_ID/file.src
+//Binary will be available in BIN_FOLDER/file
+compile /my/code/file.src
+```
+
+### Build with environment variables:
+```
+//Build file will be available in TEMP_FOLDER/BUILD_ID/file.src
+//Binary will be available in BIN_FOLDER/file
+compile /my/code/file.src --env-file /path/envs.conf
+```
+
+### Build with environment variables, suffix and no-output:
+```
+//No build file because of --no-output
+//Binary will be available in BIN_FOLDER/filestaging
+compile /my/code/file.src --env-file /path/envs.conf --suffix staging --no-output
+```
 
 # Syntax
 
 ## Importing
-The import will use the relative path from the file it imports to. Also keep in mind to not use the `.src` extension. It will automatically add the extension. (going to add a detection in the future for the extension to prevent any misuse)
+Import will use the relative path from the file it imports to. Also keep in mind to not use the `.src` extension. It will automatically add the extension. (going to add a detection in the future for the extension to prevent any misuse)
+**Note**: There was an issue in all versions bellow 0.2.0.0 which was caused by not using `@` when exporting. This is fixed now.
 ```
 //File path: library/hello-world.src
 module.exports = function()
@@ -66,9 +93,65 @@ HelloWord() //prints "Hello world!"
 HelloName("Joe") //prints "Hello Joe!"
 ```
 
+## Including
+Include will use the relative path from the file it imports to. Also keep in mind to not use the `.src` extension. Unlike `import` this will not wrap the module. This will just purely put the content of a file into your script.
+```
+//File path: library/hello-world.src
+hello = function()
+	print("Hello world!")
+end function
+
+//File path: example.src
+#include library/hello-world;
+
+hello() //prints "Hello world!"
+```
+
+## Envar
+Envar will put environment variables into your script. Just keep in mind to use the `--env-file /path/env.conf` parameter. This might be useful if you want to use different variables for different environments. Keep in mind that there's also a `--suffix local` parameter which might be helpful for this as well.
+```
+//File path: env.conf
+random=SOME_VALUE
+
+//File path: example.src
+somevar = #envar random;
+
+print(somevar) //prints "SOME_VALUE"
+```
+
 # Configuration
 
 You can either use the configuration file in `/home/user-folder/Config/compile.conf` to setup the compiler. Or you can use the CLI arguments.
+
+## Example config file:
+```
+COMMAND_START=#
+COMMAND_END=;
+TEMP_FOLDER=/home/$0/tmp
+COMPILER_FOLDER=/home/$0/compiler
+BOILERPLATE_FOLDER=boilerplates/$0.src
+BIN_FOLDER=/usr/bin
+SCRIPT_EXTENSION=src
+DEBUG=false
+VERSION=0.2.0.0
+```
+
+# Planned features
+
+## Conditional blocks for on build
+```
+Lib = {}
+
+#if (envar:ADD_FEATURE eq TRUE);
+	Lib.myFeatureFunction = function()
+		print("Feature implemented")
+	end function
+#endif;
+
+if not Lib.hasIndex("myFeatureFunction") then
+	print("Sorry feature is not implemented...")
+end if
+```
 
 # Known issues
 

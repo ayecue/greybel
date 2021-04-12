@@ -2,28 +2,36 @@ BACKSLASH_CODE = 92
 NEW_LINE_OPERATOR = char(BACKSLASH_CODE) + "n"
 ARGV_OPERATOR = "-"
 
+loadConfigFile = function(file)
+	path = file
+	if (typeof(file) == "File") then path = file.path
+	if (typeof(file) == "string") then file = get_shell.host_computer.File(path)
+	if (file == null) then (new Error).constructor("No config in $0...", [path]).throw()
+	
+	content = file.get_content
+	lines = content.split(NEW_LINE_OPERATOR)
+	map = {}
+	
+	for line in lines
+		if (line == "") then continue
+		def = line.split("=")
+		name = def.pull().trim
+		value = def.pull().trim
+		map[name] = value
+	end for
+	
+	return map
+end function
+
 Config = {}
 
 Config.load = function()
 	path = (new String).constructor("$0/Config/compile.conf")
 	path = path.parse([home_dir]).toString()
-	file = get_shell.host_computer.File(path)
-	if (file == null) then
-		(new Error).constructor("No config in $0...", [path]).throw()
-	end if
-	content = file.get_content
-	lines = content.split(NEW_LINE_OPERATOR)
-	map = {}
-
-	for line in lines
-		def = line.split("=")
-		name = def.pull()
-		value = def.pull()
-		map[name] = value
-	end for
-
+	map = loadConfigFile(path)
+	
 	self.map = map
-
+	
 	return map
 end function
 
@@ -35,7 +43,9 @@ Config.set = function(key, value)
 end function
 
 Config.get = function(key)
-	if (self.hasIndex("map")) then
+	varExists = self.map.hasIndex(key)
+	if (self.hasIndex("map") and varExists) then
+		if (not varExists) then debug("Warning: " + key + " does not exist in configuration...")
 		return self.map[key]
 	end if
 	return null
@@ -98,12 +108,12 @@ String.parse = function(values)
 	result = self.str
 	index = 0
 	maxIndex = values.len
-
+	
 	while index < maxIndex
 		result = result.replace("$"+index, values[index])
 		index = index + 1
 	end while
-
+	
 	return (new String).constructor(result)
 end function
 
@@ -115,8 +125,8 @@ String.substr = function(startIndex, endIndex)
 	return (new String).constructor(slice(self.str, startIndex, endIndex))
 end function
 
-String.indexOf = function(str)
-	return self.str.indexOf(str)
+String.indexOf = function(str, startIndex)
+	return self.str.indexOf(str, startIndex)
 end function
 
 String.replace = function(str, newStr)
@@ -147,9 +157,7 @@ Error = {}
 
 Error.constructor = function(message, values)
 	self.message = message
-	if (values != null) then
-		self.message = (new String.constructor(message)).parse(values).toString()
-	end if
+	if (values != null) then self.message = (new String.constructor(message)).parse(values).toString()
 	return self
 end function
 
@@ -203,7 +211,7 @@ Argv.parse = function()
 		end for
 		return null
 	end function
-
+	
 	while index < maxIndex
 		item = args[index].trim()
 		def = findDef(item)
@@ -220,27 +228,21 @@ Argv.parse = function()
 		end if
 		index = index + 1
 	end while
-
+	
 	self.listed = listed
 	self.unlisted = unlisted
-
+	
 	return self
 end function
 
 Argv.get = function(index = 0, mandatory = false)
-	if self.unlisted.hasIndex(index) then
-		return self.unlisted[index]
-	end if
-	if mandatory then
-		(new Error).constructor("Error cannot find param[$0]$1$2$3", [index, NEW_LINE_OPERATOR, NEW_LINE_OPERATOR, self.help]).throw()
-	end if
+	if self.unlisted.hasIndex(index) then return self.unlisted[index]
+	if mandatory then (new Error).constructor("Error cannot find param[$0]$1$2$3", [index, NEW_LINE_OPERATOR, NEW_LINE_OPERATOR, self.help]).throw()
 	return null
 end function
 
 Argv.getWithKey = function(key)
-	if self.listed.hasIndex(key) then
-		return self.listed[key]
-	end if
+	if self.listed.hasIndex(key) then return self.listed[key]
 	return null
 end function
 
@@ -259,27 +261,27 @@ end function
 IdGenerator.get = function()
 	math = new Math
 	chars = self.getChars()
-
+	
 	result = []
 	indexA = 0
 	maxA = 4
-
+	
 	while indexA < maxA
 		indexB = 0
 		maxB = 5
 		code = ""
-
+		
 		while indexB < maxB
 			code = code + chars[math.random(0, chars.len - 1)]
-
+			
 			indexB = indexB + 1
 		end while
-
+		
 		result.push(code)
-
+		
 		indexA = indexA + 1
 	end while
-
+	
 	return result.join("")
 end function
 
@@ -288,7 +290,7 @@ Path = {}
 Path.resolve = function(a)
 	parts = a.split("/")
 	result = []
-
+	
 	for part in parts
 		if (part == "..") then
 			result.pop()
@@ -296,20 +298,16 @@ Path.resolve = function(a)
 			result.push(part)
 		end if
 	end for
-
+	
 	resolved = result.join("/")
-
-	if (a.indexOf("/") == 0) then
-		resolved = "/" + resolved
-	end if
-
+	
+	if (a.indexOf("/") == 0) then resolved = "/" + resolved
+	
 	return resolved
 end function
 
 Path.join = function(a, b)
-	if (b.indexOf("/") == 0) then
-		b = b[1:]
-	end if
+	if (b.indexOf("/") == 0) then b = b[1:]
 	return Path.resolve([a, b].join("/"))
 end function
 
@@ -325,11 +323,95 @@ FS.createFile = function(path, name)
 	return self.computer.File(Path.join(path, name))
 end function
 
+EnvironmentVariables = {}
+
+EnvironmentVariables.constructor = function()
+	self.map = {}
+	self.file = Config.get("ENV_FILE")
+	if (self.file != null) then self.load()
+	return self
+end function
+
+EnvironmentVariables.load = function()
+	self.map = loadConfigFile(self.file)
+	return self.map
+end function
+
+EnvironmentVariables.get = function(key)
+	varExists = self.map.hasIndex(key)
+	if (self.hasIndex("map") and varExists) then
+		if (not varExists) then debug("Warning: Envirnoment variable " + key + " does not exist...")
+		return self.map[key]
+	end if
+	return null
+end function
+
 ASTImportCommand = {}
 
 ASTImportCommand.constructor = function(file)
 	self.file = file
 	return self
+end function
+
+ASTImportCommand.getPath = function()
+	command = self.parent
+	commandEnd = Config.get("COMMAND_END")
+	startIndex = command.str.indexOf("from") + 4
+	endIndex = command.str.indexOf(commandEnd)
+	path = command.str.substr(startIndex, endIndex).toString()
+	
+	if (path == null) then
+		(new Error).constructor("Invalid import on line $0...", [command.line]).throw()
+	end if
+
+	return path
+end function
+
+ASTImportCommand.getVarName = function()
+	command = self.parent
+	importIndex = command.str.indexOf("import")
+	fromIndex = command.str.indexOf("from")
+	
+	return command.str.substr(importIndex + 6, fromIndex).trim().toString()
+end function
+
+ASTIncludeCommand = {}
+
+ASTIncludeCommand.constructor = function(file)
+	self.file = file
+	return self
+end function
+
+ASTIncludeCommand.getPath = function()
+	command = self.parent
+	commandEnd = Config.get("COMMAND_END")
+	startIndex = command.str.indexOf("include") + 7
+	endIndex = command.str.indexOf(commandEnd)
+	path = command.str.substr(startIndex, endIndex).toString()
+	
+	if (path == null) then
+		(new Error).constructor("Invalid include on line $0...", [command.line]).throw()
+	end if
+	
+	return path
+end function
+
+ASTIncludeCommand.getContent = function()
+	return self.file.get_content
+end function
+
+ASTEnvarCommand = {}
+
+ASTEnvarCommand.constructor = function()
+	return self
+end function
+
+ASTEnvarCommand.getKey = function()
+	command = self.parent
+	commandEnd = Config.get("COMMAND_END")
+	envarIndex = command.str.indexOf("envar")
+	endIndex = command.str.indexOf(commandEnd)
+	return command.str.substr(envarIndex + 5, endIndex).trim().toString()
 end function
 
 ASTCommand = {}
@@ -339,12 +421,15 @@ ASTCommand.constructor = function(line, str, key, action)
 	self.str = str
 	self.key = key
 	self.action = action
+	action.parent = self
 	return self
 end function
 
 ASTRegistry = {}
 
 ASTRegistry.import = ASTImportCommand
+ASTRegistry.envar = ASTEnvarCommand
+ASTRegistry.include = ASTIncludeCommand
 
 AST = {}
 
@@ -362,35 +447,40 @@ AST.analyze = function()
 	commands = []
 	lines = content.split(NEW_LINE_OPERATOR)
 	index = 0
-
+	commandStart = Config.get("COMMAND_START")
+	commandEnd = Config.get("COMMAND_END")
+	
 	for line in lines
 		str = (new String).constructor(line)
-
-		if (str.startsWith(Config.get("COMMAND_START"))) then
+		startIndex = str.indexOf(commandStart)
+		
+		if (startIndex != null) then
+			endIndex = str.indexOf(commandEnd, startIndex)
+			if (endIndex == null) then continue
+			str =  str.substr(startIndex, endIndex + 1)
 			command = str.substr(1, str.indexOf(" "))
 			key = command.toString()
-
-			if (ASTRegistry[key] == null) then
+			
+			if (not ASTRegistry.hasIndex(key)) then
 				(new Error).constructor("Invalid command $0 on line $1", [key, index]).throw()
 			end if
-
+			
 			action = ASTRegistry[key]
 			entry = (new ASTCommand).constructor(index, str, key, new action)
 			commands.push(entry)
 		end if
-
+		
 		index = index + 1
 	end for
-
+	
 	self.lines = lines
 	self.commands = commands
-
+	
 	return commands
 end function
 
-AST.transform = function(line, code)
-	self.lines = self.lines[0:line] + [code] + self.lines[line + 1:]
-
+AST.transform = function(command, code)
+	self.lines[command.line] = self.lines[command.line].replace(command.str.toString(), code)
 	return self.lines
 end function
 
@@ -402,17 +492,17 @@ Dependency = {}
 
 Dependency.constructor = function(computer, file, ast)
 	pathHelper = new Path
-
+	
 	self.computer = computer
 	self.target = file
 	self.basePath = file.parent.path
 	self.ast = ast
 	self.dependencies = []
-
+	
 	if self.target == null then
 		(new Error).constructor("Dependency $0 does not exist...", [file.path]).throw()
 	end if
-
+	
 	return self
 end function
 
@@ -421,37 +511,45 @@ Dependency.findDependencies = function()
 	pathHelper = new Path
 	commands = self.ast.getCommands()
 	result = []
-
+	
 	for command in commands
 		if (command.key == "import") then
-			path = command.str.substr(command.str.indexOf("from") + 4, command.str.indexOf(";")).toString()
-
-			if (path == null) then
-				(new Error).constructor("Invalid import on line $0 in $1...", [command.line, self.target.path]).throw()
-			end if
-
+			path = command.action.getPath()
+			
 			filePath = pathHelper.join(self.basePath, path.trim() + "." + Config.getExtension())
 			file = self.computer.File(filePath)
 			debug("Looking for file in " + filePath + "...")
-
+			
 			if (file == null) then
 				(new Error).constructor("Cannot find $0...", [filePath]).throw()
 			end if
-
+			
 			command.action.constructor(file)
-
+			
 			ast = (new AST).constructor(self.computer, file)
 			ast.analyze()
-
+			
 			dependency = (new Dependency).constructor(self.computer, file, ast)
 			dependency.findDependencies()
-
+			
 			result.push(dependency)
+		else if (command.key == "include") then
+			path = command.action.getPath()
+		
+			filePath = pathHelper.join(self.basePath, path.trim() + "." + Config.getExtension())
+			file = self.computer.File(filePath)
+			debug("Looking for file in " + filePath + "...")
+			
+			if (file == null) then
+				(new Error).constructor("Cannot find $0...", [filePath]).throw()
+			end if
+		
+			command.action.constructor(file)
 		end if
 	end for
-
+	
 	self.dependencies = result
-
+	
 	return result
 end function
 
@@ -468,67 +566,76 @@ Preprocessor.run = function()
 	pathHelper = new Path
 	mainDependency = self.dependency
 	mainModuleName = md5(mainDependency.target.path)
+	environmentVariables = (new EnvironmentVariables).constructor()
 	headerBoilerplate = self.computer.File(Config.getBoilerplateFile("header")).get_content
 	moduleBoilerplate = self.computer.File(Config.getBoilerplateFile("module")).get_content
 	mainBoilerplate = self.computer.File(Config.getBoilerplateFile("main")).get_content
 	modules = {}
 	iterator = function(item)
 		moduleName = md5(item.target.path)
-
+		
 		if (modules.hasIndex(moduleName)) then
 			return
 		end if
-
+		
 		commands = item.ast.getCommands()
-
+		
 		for command in commands
 			if (command.key == "import") then
-				importIndex = command.str.indexOf("import")
-				fromIndex = command.str.indexOf("from")
-				defVar = command.str.substr(importIndex + 6, fromIndex).trim().toString()
+				defVar = command.action.getVarName()
 				defId = md5(command.action.file.path)
 				code = (new String).constructor("$0 = __REQUIRE(""$1"")").parse([defVar, defId])
-
-				item.ast.transform(command.line, code.toString())
+				
+				item.ast.transform(command, code.toString())
+			else if (command.key == "envar") then
+				defKey = command.action.getKey()
+				var = environmentVariables.get(defKey)
+				if (var == null) then var = "null"
+				code = (new String).constructor("""$0""").parse([var])
+				
+				item.ast.transform(command, code.toString())
+			else if (command.key == "include") then
+				item.ast.transform(command, command.action.getContent())
+			else
+				debugger("Command " + command.key + " not yet supported...")
 			end if
 		end for
-
+		
 		if (moduleName != mainModuleName) then
 			transformedCode = item.ast.lines.join(NEW_LINE_OPERATOR)
 			moduleCode = (new String).constructor(moduleBoilerplate)
 			modules[moduleName] = moduleCode.parse([moduleName, transformedCode]).toString()
 		end if
-
+		
 		for dependency in item.dependencies
 			iterator(dependency)
 		end for
 	end function
-
+	
 	iterator(mainDependency)
-
+	
 	processed = [headerBoilerplate]
-
+	
 	for module in modules.values
 		processed.push(module)
 	end for
-
+	
 	transformedCode = mainDependency.ast.lines.join(NEW_LINE_OPERATOR)
 	moduleCode = (new String).constructor(mainBoilerplate)
 	processed.push(moduleCode.parse([transformedCode]).toString())
-
+	
 	return processed.join(NEW_LINE_OPERATOR + NEW_LINE_OPERATOR)
 end function
 
 Compiler = {}
 
-Compiler.constructor = function(computer, name)
+Compiler.constructor = function(computer, file)
 	idGenerator = new IdGenerator
-
+	
 	self.buildId = idGenerator.get()
-	self.name = name
 	self.computer = computer
-	self.target = computer.File(self.getFullScriptFilePath())
-
+	self.target = file
+	
 	return self
 end function
 
@@ -536,26 +643,22 @@ Compiler.isTargetExisting = function()
 	return self.target != null
 end function
 
-Compiler.getScriptFilePath = function()
-	return self.name + "." + Config.getExtension()
+Compiler.getBinaryFilePath = function()
+	suffix = Config.get("SUFFIX")
+	if (suffix == null) then suffix = ""
+	name = self.target.name.replace("." + Config.getExtension(), "")
+	return name + suffix
 end function
 
-Compiler.getFullScriptFilePath = function()
-	path = new Path
-	return path.join(Config.getScriptFolder(), self.getScriptFilePath())
-end function
-
-Compiler.getFullTempFilePath = function()
-	path = new Path
-	return path.join(Config.getTempFolder(), self.getScriptFilePath())
+Compiler.getBuildFilePath = function()
+	return self.getBinaryFilePath() + "." + Config.getExtension()
 end function
 
 Compiler.preprocess = function()
 	debug("Start processing...")
-	file = self.computer.File(self.getFullScriptFilePath())
-	ast = (new AST).constructor(self.computer, file)
+	ast = (new AST).constructor(self.computer, self.target)
 	ast.analyze()
-	dependency = (new Dependency).constructor(self.computer, file, ast)
+	dependency = (new Dependency).constructor(self.computer, self.target, ast)
 	dependency.findDependencies()
 	preprocessor = (new Preprocessor).constructor(self.computer, dependency)
 	return preprocessor.run()
@@ -565,42 +668,50 @@ Compiler.compile = function(shell)
 	pathHelper = new Path
 	fs = (new FS).constructor(self.computer)
 	buildPath = pathHelper.join(Config.getTempFolder(), self.buildId)
-	buildPathFull = pathHelper.join(buildPath, self.getScriptFilePath())
-
+	buildPathFull = pathHelper.join(buildPath, self.getBuildFilePath())
+	
 	self.computer.create_folder(Config.getTempFolder(), self.buildId)
-
+	
 	print("Build id: " + self.buildId)
-
-	newFile = fs.createFile(buildPath, self.getScriptFilePath())
-
+	
+	newFile = fs.createFile(buildPath, self.getBuildFilePath())
+	
 	if newFile == null then
 		exit("Unable to create file...")
 	end if
-
+	
 	content = self.preprocess()
-
+	
 	newFile.set_content(content)
-
+	
 	print("Building in " + Config.getBinFolder() + "...")
-
+	
 	buildReport = shell.build(buildPathFull, Config.getBinFolder())
-
-	compiledBuildPathFull = pathHelper.join(Config.getBinFolder(), self.name)
+	
+	if (Config.get("NO_OUTPUT")) then
+		debug("Remove " + buildPath + "...")
+		self.computer.File(buildPath).delete
+	end if
+	
+	compiledBuildPathFull = pathHelper.join(Config.getBinFolder(), self.getBinaryFilePath())
 	if self.computer.File(compiledBuildPathFull) == null then
 		(new Error).constructor("Built failed: $0", [buildReport]).throw()
 	end if
 end function
 
-main = function(name)
+main = function(filePath)
 	myShell = get_shell
 	myComputer = myShell.host_computer
-
-	compiler = (new Compiler).constructor(myComputer, name)
-
+	
+	file = myComputer.File(filePath)
+	if (file == null) then (new Error).constructor("File $0 does not exist...", [filePath]).throw()
+	
+	compiler = (new Compiler).constructor(myComputer, file)
+	
 	if not compiler.isTargetExisting then
 		(new Error).constructor("Cannot find file.").throw()
 	end if
-
+	
 	content = compiler.compile(myShell)
 end function
 
@@ -611,11 +722,15 @@ argDefinitions = []
 argDefinitions.push((new Arg).constructor("h", "help", ArgType.FLAG, "Print help"))
 argDefinitions.push((new Arg).constructor("d", "debug", ArgType.FLAG, "Activate debug mode"))
 argDefinitions.push((new Arg).constructor("cs", "command-start", ArgType.VALUE, "Command starting operator"))
+argDefinitions.push((new Arg).constructor("ce", "command-end", ArgType.VALUE, "Command ending operator"))
 argDefinitions.push((new Arg).constructor("s", "script-folder", ArgType.VALUE, "Script folder"))
 argDefinitions.push((new Arg).constructor("t", "temp-folder", ArgType.VALUE, "Temporary folder"))
 argDefinitions.push((new Arg).constructor("c", "compiler-folder", ArgType.VALUE, "Compiler folder"))
 argDefinitions.push((new Arg).constructor("b", "bin-folder", ArgType.VALUE, "Bin folder"))
 argDefinitions.push((new Arg).constructor("se", "script-extension", ArgType.VALUE, "Script extension"))
+argDefinitions.push((new Arg).constructor("no", "no-output",  ArgType.FLAG, "No output"))
+argDefinitions.push((new Arg).constructor("sx", "suffix",  ArgType.VALUE, "Suffix"))
+argDefinitions.push((new Arg).constructor("ev", "env-file",  ArgType.VALUE, "Environment varibales file"))
 
 helpBlock = []
 

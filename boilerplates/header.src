@@ -4,9 +4,9 @@ MODULES = {}
 EXPORTED = {}
 
 __REQUIRE = function(r)
-  if (not MODULES.hasIndex(r)) then
-    exit("Module " + r + " cannot be found...")
-  end if
-  module = MODULES[r]
-  return module(r)
+	if (not MODULES.hasIndex(r)) then
+		exit("Module " + r + " cannot be found...")
+	end if
+	module = MODULES[r]
+	return @module(r).exports
 end function
