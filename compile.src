@@ -2,18 +2,19 @@ BACKSLASH_CODE = 92
 NEW_LINE_OPERATOR = char(BACKSLASH_CODE) + "n"
 ARGV_OPERATOR = "-"
 
-loadConfigFile = function(file)
+loadConfigFile = function(file, map)
 	path = file
 	if (typeof(file) == "File") then path = file.path
 	if (typeof(file) == "string") then file = get_shell.host_computer.File(path)
+	if (map == null) then map = {}
 	if (file == null) then (new Error).constructor("No config in $0...", [path]).throw()
 	
 	content = file.get_content
 	lines = content.split(NEW_LINE_OPERATOR)
-	map = {}
 	
 	for line in lines
-		if (line == "") then continue
+		line = line.trim
+		if (line == "" or line[0] == "#") then continue
 		def = line.split("=")
 		name = def.pull().trim
 		value = def.pull().trim
@@ -21,6 +22,15 @@ loadConfigFile = function(file)
 	end for
 	
 	return map
+end function
+
+generateChars = function(from, to)
+	output = ""
+	while from < to
+		output = output + char(from)
+		from = from + 1
+	end while
+	return output
 end function
 
 Config = {}
@@ -44,17 +54,11 @@ end function
 
 Config.get = function(key)
 	varExists = self.map.hasIndex(key)
+	if (not varExists) then debug("Warning: " + key + " does not exist in configuration...")
 	if (self.hasIndex("map") and varExists) then
-		if (not varExists) then debug("Warning: " + key + " does not exist in configuration...")
 		return self.map[key]
 	end if
 	return null
-end function
-
-Config.getScriptFolder = function()
-	path = (new String).constructor(Config.get("SCRIPT_FOLDER"))
-	user = active_user
-	return path.parse([user]).toString()
 end function
 
 Config.getTempFolder = function()
@@ -169,6 +173,7 @@ ArgType = {}
 
 ArgType.FLAG = "FLAG"
 ArgType.VALUE = "VALUE"
+ArgType.MULTIPLE = "MULTIPLE"
 
 Arg = {}
 
@@ -188,68 +193,160 @@ end function
 Argv = {}
 
 Argv.constructor = function(defs, help)
-	self.args = params
-	self.listed = {}
-	self.unlisted = []
-	self.defs = defs
-	self.help = help
+	me = self
+	me.args = params
+	me.listed = {}
+	me.unlisted = params
+	me.defs = defs
+	me.help = help
 	return self
 end function
 
 Argv.parse = function()
-	args = self.args
-	defs = self.defs
+	me = self
+	args = me.args
+	defs = me.defs
 	listed = {}
 	unlisted = []
 	index = 0
 	maxIndex = args.len
 	findDef = function(arg)
 		for def in defs
-			if (ARGV_OPERATOR + ARGV_OPERATOR + def.command == arg or ARGV_OPERATOR + def.shortcut == arg) then
+			if ("--" + def.command == arg or "-" + def.shortcut == arg) then
 				return def
 			end if
 		end for
 		return null
 	end function
+	isWrapped = function(x)
+		return x[0] == "'"
+	end function
+	getItemsInWrap = function(start)
+		i = start
+		r = []
+		while i < maxIndex
+			x = args[i].trim()
+			if (x != "" and x[-1] == "'") then
+				r.push(x[:x.len - 1])
+				return r
+			end if
+			r.push(x)
+			i = i + 1
+		end while
+		return r
+	end function
 	
 	while index < maxIndex
 		item = args[index].trim()
+		if (item == "") then
+			index = index + 1
+			continue
+		end if
 		def = findDef(item)
 		if (def == null) then
+			if (isWrapped(item)) then
+				if (item[-1] == "'") then
+					item = item[1:item.len - 1]
+				else
+					wrappedItems = getItemsInWrap(index + 1)
+					item = [item[1:], wrappedItems.join(" ")].join(" ")
+					index = index + wrappedItems.len
+				end if
+			end if
 			unlisted.push(item)
 		else
-			if (def.type == ArgType.VALUE) then
+			type = def.type
+			command = def.command
+			isValue = type == ArgType.VALUE
+			isMultiple = type == ArgType.MULTIPLE
+			isFlag = type == ArgType.FLAG
+
+			if (isValue or isMultiple) then
 				index = index + 1
 				value = args[index]
-				listed[def.command] = value
-			else if (def.type == ArgType.FLAG) then
-				listed[def.command] = true
+				if (isWrapped(value)) then
+					wrappedItems = getItemsInWrap(index + 1)
+					value = [value[1:], wrappedItems.join(" ")].join(" ")
+					index = index + wrappedItems.len
+				end if
+				if (isMultiple) then
+					if (listed.hasIndex(command)) then
+						listed[command].push(value)
+					else
+						listed[command] = [value]
+					end if
+				else
+					listed[command] = value
+				end if
+			else if (isFlag) then
+				listed[command] = true
 			end if
 		end if
 		index = index + 1
 	end while
 	
-	self.listed = listed
-	self.unlisted = unlisted
+	me.listed = listed
+	me.unlisted = unlisted
 	
-	return self
+	return me
 end function
 
 Argv.get = function(index = 0, mandatory = false)
-	if self.unlisted.hasIndex(index) then return self.unlisted[index]
-	if mandatory then (new Error).constructor("Error cannot find param[$0]$1$2$3", [index, NEW_LINE_OPERATOR, NEW_LINE_OPERATOR, self.help]).throw()
+	me = self
+	if not me.hasIndex("unlisted") then
+		me.unlisted = params
+	end if
+	if not me.hasIndex("help") or me.help == null then
+		me.help = "n/a"
+	end if
+	if me.unlisted.hasIndex(index) then
+		return me.unlisted[index]
+	end if
+	if mandatory then
+		(new Error).constructor("Error cannot find param[$0]$1$2$3", [index, NEW_LINE_OPERATOR, NEW_LINE_OPERATOR, me.help]).throw()
+	end if
 	return null
 end function
 
 Argv.getWithKey = function(key)
-	if self.listed.hasIndex(key) then return self.listed[key]
+	if self.listed.hasIndex(key) then
+		return self.listed[key]
+	end if
 	return null
 end function
 
-Math = {}
+Random = {}
 
-Math.random = function(min, max)
-	return floor((rnd * max) + min)
+Random.pool = {}
+Random.defaultSeed = "random"
+
+Random.createPool = function(seed, val)
+	return { "seed": seed, "value": val, "generation": 0 }
+end function
+
+Random.gen = function(min, max, seed, inc)
+	me = self
+	pool = me.pool
+	if (inc == null) then inc = true
+	if (seed == null) then seed = me.defaultSeed
+	if (pool.hasIndex(seed)) then
+		ps = pool[seed]
+		if (not inc) then return ps.value
+		ps.generation = ps.generation + 1
+		val = floor((rnd(ps.value + ps.generation) * (max - min)) + min)
+		ps.value = val
+		return val
+	end if
+
+	seedVal = 0
+	for char in seed
+		seedVal = seedVal + char.code
+	end for
+
+	val = floor((rnd(seedVal) * (max - min)) + min)
+	pool[seed] = me.createPool(seedVal, val)
+	
+	return val
 end function
 
 IdGenerator = {}
@@ -259,7 +356,6 @@ IdGenerator.getChars = function()
 end function
 
 IdGenerator.get = function()
-	math = new Math
 	chars = self.getChars()
 	
 	result = []
@@ -272,7 +368,7 @@ IdGenerator.get = function()
 		code = ""
 		
 		while indexB < maxB
-			code = code + chars[math.random(0, chars.len - 1)]
+			code = code + chars[Random.gen(0, chars.len - 1, md5(current_date + time))]
 			
 			indexB = indexB + 1
 		end while
@@ -327,29 +423,564 @@ EnvironmentVariables = {}
 
 EnvironmentVariables.constructor = function()
 	self.map = {}
-	self.file = Config.get("ENV_FILE")
-	if (self.file != null) then self.load()
+	self.files = Config.get("ENV_FILE")
+	if (self.files != null) then self.load()
 	return self
 end function
 
 EnvironmentVariables.load = function()
-	self.map = loadConfigFile(self.file)
+	for file in self.files
+		self.map = loadConfigFile(file, self.map)
+	end for
 	return self.map
 end function
 
 EnvironmentVariables.get = function(key)
 	varExists = self.map.hasIndex(key)
+	if (not varExists) then debug("Warning: Envirnoment variable " + key + " does not exist...")
 	if (self.hasIndex("map") and varExists) then
-		if (not varExists) then debug("Warning: Envirnoment variable " + key + " does not exist...")
 		return self.map[key]
 	end if
 	return null
 end function
 
+NamespaceGenerator = {}
+
+NamespaceGenerator.constructor = function(characters, forbidden)
+	self.buffer = [0]
+	self.mapping = {}
+	self.rmapping = {}
+	self.forbidden = forbidden
+	self.characters = characters
+	return self
+end function
+
+NamespaceGenerator.get = function(key)
+	mapping = self.mapping
+	if (not mapping.hasIndex(key)) then return null
+	return mapping[key]
+end function
+
+NamespaceGenerator.increaseBuffer = function(i)
+	currentCharBuffer = self.buffer
+	maxBufferSize = self.characters.len
+	if (i == null) then i = currentCharBuffer.len - 1
+	p = currentCharBuffer[i]
+	p = p + 1
+	currentCharBuffer[i] = p
+	if (p == maxBufferSize) then
+		currentCharBuffer[i] = 0
+		if (i == 0) then
+			currentCharBuffer.push(0)
+		else
+			self.increaseBuffer(i - 1)
+		end if
+	end if
+end function
+
+NamespaceGenerator.generateNamespace = function()
+	currentCharBuffer = self.buffer
+	generatorCharacters = self.characters
+	forbiddenNamespaces = self.forbidden
+	name = ""
+	index = 0
+	
+	while index < currentCharBuffer.len
+		pointer = currentCharBuffer[index]
+		name = name + generatorCharacters[pointer]
+		if (index == currentCharBuffer.len - 1) then self.increaseBuffer()
+		index = index + 1
+	end while
+	
+	if (forbiddenNamespaces.indexOf(name) != null) then return self.generateNamespace()
+	
+	return name
+end function
+
+NamespaceGenerator.createNamespace = function(value, isCollision = false)
+	mapping = self.mapping
+	rmapping = self.rmapping
+	
+	if (mapping.hasIndex(value) and not isCollision) then return
+	
+	namespace = self.generateNamespace()
+	
+	mapping[value] = namespace
+	rmapping[namespace] = value
+	debug("Mapping between " + value + " and " + namespace + " created")
+	
+	if (rmapping.hasIndex(value)) then
+		debug("WARNING: Collision found for value " + value)
+		collisionValue = rmapping[value]
+		rmapping.remove(value)
+		self.createNamespace(collisionValue, true)
+	end if
+end function
+
+Uglifier = {}
+
+Uglifier.NATIVE_METHODS = ["exit", "typeof", "if", "then", "in", "and", "or", "end", "while", "for", "se" + "lf", "params", "char", "globals", "locals", "print", "wait", "time", "typeof", "md5", "get_router", "get_shell", "nslookup", "whois", "is_valid_ip", "is_lan_ip", "command_info", "current_date", "current_path", "parent_path", "home_dir", "program_path", "active_user", "user_mail_address", "user_bank_number", "format_columns", "user_input", "include_lib", "bitwise", "clear_screen", "exit"]
+
+Uglifier.OPERATOR_CHARACTERS = "=><!"
+Uglifier.ALPHABETIC_CHARACTERS = "qwertzuiopasdfghjklyxcvbnm"
+Uglifier.NUMBER_CHARACTERS = "0123456789"
+
+Uglifier.SPECIAL_CHARACTERS = {}
+Uglifier.SPECIAL_CHARACTERS.UNDERSCORE = "_"
+Uglifier.SPECIAL_CHARACTERS.PROPERTY = "."
+Uglifier.SPECIAL_CHARACTERS.BRACKET_START = "["
+Uglifier.SPECIAL_CHARACTERS.BRACKET_STOP = "]"
+Uglifier.SPECIAL_CHARACTERS.CURVED_BRACKET_START = "("
+Uglifier.SPECIAL_CHARACTERS.SPACE = " "
+Uglifier.SPECIAL_CHARACTERS.QUOTE = char(34)
+Uglifier.SPECIAL_CHARACTERS.EQUAL = "="
+
+Uglifier.SAFE_TRIM_OPERATORS = ["=", "!", "<", ">", ",", "%", "-", "+", "/", "*", ":", "^", " "]
+Uglifier.L_TRIM_OPERATORS = ["[", "(", "{"]
+Uglifier.R_TRIM_OPERATORS = [")", "]", "}"]
+
+Uglifier.VALID_BEFORE = ["	", " ", "=", "(", "[", "@", ",", "+", "-", "<", ">", "*", "/", "%", ":", "^"]
+Uglifier.VALID_AFTER = ["	", " ", "=", "[", "]", ".", "(", ",", ")", "+", "-", "<", ">", "*", "/", "%", ":", "}", "!", "^"]
+
+Uglifier.NAMESPACES = {}
+Uglifier.NAMESPACES.FUNCTION = "function"
+Uglifier.NAMESPACES.HAS_INDEX = "hasIndex"
+Uglifier.NAMESPACES.FOR = "for"
+Uglifier.NAMESPACES.IN = "in"
+Uglifier.NAMESPACES.COMMENT = "//"
+
+Uglifier.GL_NAMESPACES = ["globals", "locals"]
+
+Uglifier.FUNCTION_PARAMETER_OPERATORS = "=,)"
+Uglifier.FUNCTION_PARAMETER_NEXT = ",)"
+
+Uglifier.GENERATOR_CHARACTERS = Uglifier.ALPHABETIC_CHARACTERS + Uglifier.ALPHABETIC_CHARACTERS.upper + Uglifier.SPECIAL_CHARACTERS.UNDERSCORE + generateChars(1000, 2000)
+Uglifier.characterBuffer = [0]
+
+Uglifier.constructor = function()
+	self.namespaces = (new NamespaceGenerator).constructor(self.GENERATOR_CHARACTERS, self.NATIVE_METHODS)
+	self.variables = []
+	self.quoteBoundaryCache = {}
+	self.wordsSaved = 0
+	return self
+end function
+
+Uglifier.registerVariable = function(var, isCollision = false)
+	numberCharacters = self.NUMBER_CHARACTERS
+	nativeMethods = self.NATIVE_METHODS
+	variables = self.variables
+	
+	if (var == "") then return
+	if (numberCharacters.indexOf(var[0])) then return
+	if (nativeMethods.indexOf(var) != null) then return
+	if (variables.indexOf(var) != null) then return
+	
+	variables.push(var)
+	self.namespaces.createNamespace(var)
+end function
+
+Uglifier.isGlobalOrLocalNamespace = function(line, i)
+	gln = self.GL_NAMESPACES
+	
+	for namespace in gln
+		if (line[i - namespace.len:i] == namespace) then return true
+	end for
+	
+	return false
+end function
+
+Uglifier.skipWhitespaces = function(line, i)
+	space = self.SPECIAL_CHARACTERS.SPACE
+	
+	while i >= 0
+		if (line[i] != space) then return i
+		i = i - 1
+	end while
+	
+	return i
+end function
+
+Uglifier.skipBracket = function(line, i)
+	bracketStart = self.SPECIAL_CHARACTERS.BRACKET_START
+	
+	while i > 0
+		i = i - 1
+		if (line[i] == bracketStart) then break
+	end while
+	
+	return i
+end function
+
+Uglifier.findVariable = function(line, i)
+	space = self.SPECIAL_CHARACTERS.SPACE
+	bracketStop = self.SPECIAL_CHARACTERS.BRACKET_STOP
+	property = self.SPECIAL_CHARACTERS.PROPERTY
+	quote = self.SPECIAL_CHARACTERS.QUOTE
+	alphabeticChars = self.ALPHABETIC_CHARACTERS
+	numberChars = self.NUMBER_CHARACTERS
+	underscore = self.SPECIAL_CHARACTERS.UNDERSCORE
+	varLine = ""
+	
+	while i >= 0
+		item = line[i]
+		
+		if (item == space) then
+			if (varLine.len > 0) then return varLine
+			i = self.skipWhitespaces(line, i)
+			item = line[i]
+		end if
+		
+		if (item == bracketStop) then
+			i = self.skipBracket(line, i)
+			item = line[i]
+		end if
+		
+		if (alphabeticChars.indexOf(item.lower) != null or numberChars.indexOf(item) != null or  item == underscore) then
+			varLine = item + varLine
+		else if (item == property) then
+			if (self.isGlobalOrLocalNamespace(line, i)) then return varLine
+			varLine = ""
+		else if (item == quote) then
+			varLine = ""
+		else
+			if (varLine.len > 0) then return varLine
+		end if
+		i = i - 1
+	end while
+	
+	return varLine
+end function
+
+Uglifier.findDeclarations = function(line)
+	operatorChars = self.OPERATOR_CHARACTERS
+	set = self.SPECIAL_CHARACTERS.EQUAL
+	
+	declarationIndex = line.indexOf(set)
+	if (declarationIndex == null) then return false
+	if (operatorChars.indexOf(line[declarationIndex - 1]) != null) then return false
+	if (operatorChars.indexOf(line[declarationIndex + 1]) != null) then return false
+	
+	self.registerVariable(self.findVariable(line, declarationIndex))
+	
+	return true
+end function
+
+Uglifier.findFunctionVariableParameterEnd = function(line, i)
+	operators = self.FUNCTION_PARAMETER_OPERATORS
+	
+	for operator in operators
+		endIndex = line.indexOf(operator, i)
+		if(endIndex != null) then return endIndex
+	end for
+	
+	return null
+end function
+
+Uglifier.findNextFunctionParameter = function(line, i)
+	operators = self.FUNCTION_PARAMETER_NEXT
+	
+	for operator in operators
+		endIndex = line.indexOf(operator, i)
+		if (endIndex != null) then return endIndex
+	end for
+	
+	return null
+end function
+
+Uglifier.findFunctionParameters = function(line)
+	bracketStart = self.SPECIAL_CHARACTERS.CURVED_BRACKET_START
+	functionNamespace = self.NAMESPACES.FUNCTION
+	
+	functionIndex = line.indexOf(functionNamespace)
+	if (functionIndex == null) then return false
+	parameterIndex = line.indexOf(bracketStart, functionIndex)
+	
+	while parameterIndex != null
+		endIndex = self.findFunctionVariableParameterEnd(line, parameterIndex)
+		if (endIndex == null) then break
+		varLine = line[parameterIndex + 1:endIndex]
+		if (varLine == null) then break
+		self.registerVariable(varLine.trim)
+		if (line[endIndex] == "=") then
+			endIndex = self.findNextFunctionParameter(line, parameterIndex)
+		end if
+		parameterIndex = endIndex
+	end while
+	
+	return true
+end function
+
+Uglifier.findForParameter = function(line)
+	forNamespace = self.NAMESPACES.FOR
+	inNamespace = self.NAMESPACES.IN
+	space = self.SPECIAL_CHARACTERS.SPACE
+	
+	forIndex = line.indexOf(forNamespace)
+	if (forIndex == null) then return false
+	inIndex = line.indexOf(inNamespace, forIndex)
+	
+	while inIndex != null
+		if (line[inIndex + 2] == space) then break
+		inIndex = line.indexOf(inNamespace, inIndex)
+	end while
+	if (inIndex == null) then return false
+	
+	varLine = line[forIndex + 3:inIndex]
+	self.registerVariable(varLine.trim)
+	
+	return true
+end function
+
+Uglifier.getQuoteBoundaries = function(line)
+	quoteBoundaryCache = self.quoteBoundaryCache
+
+	if (quoteBoundaryCache.hasIndex(line)) then
+		return quoteBoundaryCache[line]
+	end if
+
+	quotes = {"ranges": [], "isOpen": false}
+	quoteChar = self.SPECIAL_CHARACTERS.QUOTE
+	currentQuoteIndex = line.indexOf(quoteChar)
+	startQuoteIndex = null
+	
+	while currentQuoteIndex != null
+		if (startQuoteIndex != null) then
+			quotes.ranges.push([startQuoteIndex, currentQuoteIndex])
+			startQuoteIndex = null
+		else
+			startQuoteIndex = currentQuoteIndex
+		end if
+		currentQuoteIndex = line.indexOf(quoteChar, currentQuoteIndex) 
+	end while
+	
+	if (startQuoteIndex != null) then 
+		quotes.ranges.push([startQuoteIndex, line.len])
+		quotes.isOpen = true
+	end if
+	
+	quoteBoundaryCache[line] = quotes
+
+	return quotes
+end function
+
+Uglifier.getGlobalHasIndexBoundaries = function(line)
+	hasIndexMethod = self.NAMESPACES.HAS_INDEX
+	quoteChar = self.SPECIAL_CHARACTERS.QUOTE
+	methodBoundaries = {"ranges": []}
+	currentMethodIndex = line.indexOf(hasIndexMethod)
+	
+	while currentMethodIndex != null
+		if (self.isGlobalOrLocalNamespace(line, currentMethodIndex - 1)) then
+			startQuoteIndex = line.indexOf(quoteChar, currentMethodIndex)
+			if (startQuoteIndex != null) then
+				endQuoteIndex = line.indexOf(quoteChar, startQuoteIndex)
+				currentMethodIndex = startQuoteIndex
+				if (endQuoteIndex != null) then
+					methodBoundaries.ranges.push([startQuoteIndex, endQuoteIndex])
+					currentMethodIndex = endQuoteIndex
+				end if
+			end if
+		end if
+		currentMethodIndex = line.indexOf(hasIndexMethod, currentMethodIndex) 
+	end while
+	
+	return methodBoundaries
+end function
+
+Uglifier.isInsideBoundaries = function(boundaries, i)
+	for boundary in boundaries.ranges
+		if (boundary[0] <= i and i <= boundary[1]) then return true
+	end for
+	
+	return false
+end function
+
+Uglifier.isFittingBoundaries = function(boundaries, i, var)
+	endIndex = i + var.len
+	
+	for boundary in boundaries.ranges
+		if (boundary[0] + 1 == i and endIndex == boundary[1]) then return true
+	end for
+	
+	return false
+end function
+
+Uglifier.isValidAfter = function(line, i, var)
+	validAfter = self.VALID_AFTER
+	endVarIndex = i + var.len - 1
+	isEOL = line.len - 1 == endVarIndex
+	
+	if (not isEOL) then
+		afterChar = line[endVarIndex + 1]
+		hasValidFollowUp = validAfter.indexOf(afterChar) != null
+		
+		if (not hasValidFollowUp) then
+			return false
+		end if
+	end if
+	
+	return true
+end function
+
+Uglifier.isValidBefore = function(line, i, var)
+	validBefore = self.VALID_BEFORE
+	isStart = i == 0
+	
+	if (not isStart) then
+		beforeChar = line[i - 1]
+		hasValidBefore = validBefore.indexOf(beforeChar) != null
+		if (not hasValidBefore) then
+			if (beforeChar == "." and self.isGlobalOrLocalNamespace(line, i - 1)) then
+				return true
+			end if
+			return false
+		end if
+	end if
+	return true
+end function
+
+Uglifier.replaceVariables = function(line)
+	namespaces = self.namespaces
+	
+	for var in self.variables
+		varIndex = line.indexOf(var)
+		
+		while varIndex != null
+			hasIndexBoundaries = self.getGlobalHasIndexBoundaries(line)
+			if (not self.isFittingBoundaries(hasIndexBoundaries, varIndex, var)) then
+				quoteBoundaries = self.getQuoteBoundaries(line)
+				if (self.isInsideBoundaries(quoteBoundaries, varIndex) or not self.isValidAfter(line, varIndex, var) or not self.isValidBefore(line, varIndex, var)) then
+					varIndex = line.indexOf(var, varIndex)
+					continue
+				end if
+			end if
+			endVarIndex = varIndex + var.len - 1
+			isEOL = line.len - 1 == endVarIndex
+			isStart = varIndex == 0
+			startLine = ""
+			endLine = ""
+			if (not isStart) then startLine = line[:varIndex]
+			if (not isEOL) then endLine = line[endVarIndex + 1:]
+			
+			namespace = namespaces.get(var)
+			line = startLine + namespace + endLine
+			self.wordsSaved = self.wordsSaved + ((endVarIndex - varIndex) + 1) - namespace.len
+			
+			varIndex = line.indexOf(var, varIndex)
+		end while
+	end for
+	
+	return line
+end function
+
+Uglifier.removeComment = function(line)
+	comment = self.NAMESPACES.COMMENT
+	
+	commentIndex = line.indexOf(comment)
+	if (commentIndex == null) then return line
+	
+	quoteBoundaries = self.getQuoteBoundaries(line)
+	
+	while commentIndex != null
+		if (not self.isInsideBoundaries(quoteBoundaries, commentIndex)) then break
+		commentIndex = line.indexOf(comment, commentIndex)
+	end while
+	
+	if (commentIndex == null) then return line
+	
+	self.wordsSaved = self.wordsSaved + line.len - commentIndex
+	
+	if (commentIndex == 0) then return ""
+	
+	return line[:commentIndex].trim
+end function
+
+Uglifier.removeWhitespaces = function(line)
+	space = self.SPECIAL_CHARACTERS.SPACE
+	safeOps = self.SAFE_TRIM_OPERATORS
+	lOps = self.L_TRIM_OPERATORS + safeOps
+	rOps = self.R_TRIM_OPERATORS + safeOps
+	spaceIndex = line.indexOf(space)
+
+	while spaceIndex != null
+		quoteBoundaries = self.getQuoteBoundaries(line)
+		if (self.isInsideBoundaries(quoteBoundaries, spaceIndex)) then
+			spaceIndex = line.indexOf(space, spaceIndex)
+			continue
+		end if
+
+		before = line[spaceIndex - 1]
+		after = line[spaceIndex + 1]
+		if (lOps.indexOf(before) == null and rOps.indexOf(after) == null) then
+			spaceIndex = line.indexOf(space, spaceIndex)
+			continue
+		end if
+
+		isEOL = line.len - 1 == spaceIndex
+		isStart = spaceIndex == 0
+		startLine = ""
+		endLine = ""
+		if (not isStart) then startLine = line[:spaceIndex]
+		if (not isEOL) then endLine = line[spaceIndex + 1:]
+		line = startLine + endLine
+		self.wordsSaved = self.wordsSaved + 1
+		spaceIndex = line.indexOf(space, spaceIndex - 1)
+	end while
+
+	return line
+end function
+
+Uglifier.minify = function(lines)
+	filtered = []
+	newLines = []
+	skip = false
+	
+	for line in lines
+		line = line.trim
+		line = self.removeComment(line)
+		
+		if (line == "") then
+			self.wordsSaved = self.wordsSaved + 1
+			continue
+		end if
+		
+		filtered.push(line)
+		
+		if (self.findForParameter(line)) then continue
+		self.findFunctionParameters(line)
+		self.findDeclarations(line)
+	end for
+	
+	for line in filtered
+		if (skip) then
+			boundaries = self.getQuoteBoundaries(line)
+			skip = not (boundaries.ranges.len > 0 and boundaries.isOpen)
+			if (skip) then
+				newLines.push(line)
+				continue
+			end if
+		else
+			boundaries = self.getQuoteBoundaries(line)
+			skip = boundaries.isOpen
+		end if
+		
+		line = self.removeWhitespaces(line)
+		line = self.replaceVariables(line)
+
+		newLines.push(line)
+	end for
+	
+	return newLines
+end function
+
+ModuleNamespaces = (new NamespaceGenerator).constructor(Uglifier.GENERATOR_CHARACTERS, [])
+
 ASTImportCommand = {}
 
 ASTImportCommand.constructor = function(file)
 	self.file = file
+	self.id = md5(self.file.path)
+	ModuleNamespaces.createNamespace(self.id)
 	return self
 end function
 
@@ -363,7 +994,7 @@ ASTImportCommand.getPath = function()
 	if (path == null) then
 		(new Error).constructor("Invalid import on line $0...", [command.line]).throw()
 	end if
-
+	
 	return path
 end function
 
@@ -373,6 +1004,10 @@ ASTImportCommand.getVarName = function()
 	fromIndex = command.str.indexOf("from")
 	
 	return command.str.substr(importIndex + 6, fromIndex).trim().toString()
+end function
+
+ASTImportCommand.getId = function()
+	return self.id
 end function
 
 ASTIncludeCommand = {}
@@ -441,35 +1076,45 @@ AST.constructor = function(computer, file)
 	return self
 end function
 
+AST.findCommands = function(line, index)
+	commandStart = Config.get("COMMAND_START")
+	commandEnd = Config.get("COMMAND_END")
+	str = (new String).constructor(line)
+	commands = []
+	startIndex = str.indexOf(commandStart)
+		
+	while startIndex != null
+		endIndex = str.indexOf(commandEnd, startIndex)
+		if (endIndex == null) then break
+
+		markup =  str.substr(startIndex, endIndex + 1)
+		command = markup.substr(1, markup.indexOf(" "))
+		key = command.toString()
+		
+		if (ASTRegistry.hasIndex(key)) then
+			action = ASTRegistry[key]
+			entry = (new ASTCommand).constructor(index, markup, key, new action)
+			commands.push(entry)
+		end if
+
+		startIndex = str.indexOf(commandStart, endIndex)
+	end while
+
+	if (commands.len == 0) then return null
+
+	return commands
+end function
+
 AST.analyze = function()
 	debug("Analyzing AST...")
 	content = self.file.get_content
 	commands = []
 	lines = content.split(NEW_LINE_OPERATOR)
 	index = 0
-	commandStart = Config.get("COMMAND_START")
-	commandEnd = Config.get("COMMAND_END")
 	
 	for line in lines
-		str = (new String).constructor(line)
-		startIndex = str.indexOf(commandStart)
-		
-		if (startIndex != null) then
-			endIndex = str.indexOf(commandEnd, startIndex)
-			if (endIndex == null) then continue
-			str =  str.substr(startIndex, endIndex + 1)
-			command = str.substr(1, str.indexOf(" "))
-			key = command.toString()
-			
-			if (not ASTRegistry.hasIndex(key)) then
-				(new Error).constructor("Invalid command $0 on line $1", [key, index]).throw()
-			end if
-			
-			action = ASTRegistry[key]
-			entry = (new ASTCommand).constructor(index, str, key, new action)
-			commands.push(entry)
-		end if
-		
+		entries = self.findCommands(line, index)
+		if (entries != null) then commands = commands + entries
 		index = index + 1
 	end for
 	
@@ -495,15 +1140,22 @@ Dependency.constructor = function(computer, file, ast)
 	
 	self.computer = computer
 	self.target = file
+	self.id = md5(file.path)
 	self.basePath = file.parent.path
 	self.ast = ast
 	self.dependencies = []
+	
+	ModuleNamespaces.createNamespace(self.id)
 	
 	if self.target == null then
 		(new Error).constructor("Dependency $0 does not exist...", [file.path]).throw()
 	end if
 	
 	return self
+end function
+
+Dependency.getId = function()
+	return self.id
 end function
 
 Dependency.findDependencies = function()
@@ -535,7 +1187,7 @@ Dependency.findDependencies = function()
 			result.push(dependency)
 		else if (command.key == "include") then
 			path = command.action.getPath()
-		
+			
 			filePath = pathHelper.join(self.basePath, path.trim() + "." + Config.getExtension())
 			file = self.computer.File(filePath)
 			debug("Looking for file in " + filePath + "...")
@@ -543,7 +1195,7 @@ Dependency.findDependencies = function()
 			if (file == null) then
 				(new Error).constructor("Cannot find $0...", [filePath]).throw()
 			end if
-		
+			
 			command.action.constructor(file)
 		end if
 	end for
@@ -565,14 +1217,14 @@ Preprocessor.run = function()
 	debug("Run preprocessor...")
 	pathHelper = new Path
 	mainDependency = self.dependency
-	mainModuleName = md5(mainDependency.target.path)
+	mainModuleName = ModuleNamespaces.get(mainDependency.getId())
 	environmentVariables = (new EnvironmentVariables).constructor()
 	headerBoilerplate = self.computer.File(Config.getBoilerplateFile("header")).get_content
 	moduleBoilerplate = self.computer.File(Config.getBoilerplateFile("module")).get_content
 	mainBoilerplate = self.computer.File(Config.getBoilerplateFile("main")).get_content
 	modules = {}
 	iterator = function(item)
-		moduleName = md5(item.target.path)
+		moduleName = ModuleNamespaces.get(item.getId())
 		
 		if (modules.hasIndex(moduleName)) then
 			return
@@ -583,21 +1235,21 @@ Preprocessor.run = function()
 		for command in commands
 			if (command.key == "import") then
 				defVar = command.action.getVarName()
-				defId = md5(command.action.file.path)
+				defId = ModuleNamespaces.get(command.action.getId())
 				code = (new String).constructor("$0 = __REQUIRE(""$1"")").parse([defVar, defId])
 				
 				item.ast.transform(command, code.toString())
 			else if (command.key == "envar") then
 				defKey = command.action.getKey()
 				var = environmentVariables.get(defKey)
-				if (var == null) then var = "null"
-				code = (new String).constructor("""$0""").parse([var])
+				code = "null"
+				if (var != null) then code = (new String).constructor("""$0""").parse([var]).toString()
 				
-				item.ast.transform(command, code.toString())
+				item.ast.transform(command, code)
 			else if (command.key == "include") then
 				item.ast.transform(command, command.action.getContent())
 			else
-				debugger("Command " + command.key + " not yet supported...")
+				debug("Command " + command.key + " not yet supported...")
 			end if
 		end for
 		
@@ -624,10 +1276,13 @@ Preprocessor.run = function()
 	moduleCode = (new String).constructor(mainBoilerplate)
 	processed.push(moduleCode.parse([transformedCode]).toString())
 	
-	return processed.join(NEW_LINE_OPERATOR + NEW_LINE_OPERATOR)
+	return processed
 end function
 
 Compiler = {}
+
+Compiler.NORMALIZE_BUFFER_SIZE = 50000
+Compiler.MAX_FILE_SIZE = 80000
 
 Compiler.constructor = function(computer, file)
 	idGenerator = new IdGenerator
@@ -664,12 +1319,42 @@ Compiler.preprocess = function()
 	return preprocessor.run()
 end function
 
+Compiler.normalize = function(content, tempFile)
+	index = 0
+	length = content.len
+	bufferSize = 0
+	buffer = []
+	normalizedLines = []
+	
+	while index < length
+		item = content[index]
+		bufferSize = bufferSize + item.len
+		if (bufferSize > self.NORMALIZE_BUFFER_SIZE) then
+			tempFile.set_content(buffer.join(NEW_LINE_OPERATOR))
+			normalizedLines = normalizedLines + tempFile.get_content.split(NEW_LINE_OPERATOR)
+			buffer = []
+			bufferSize = item.len
+		end if
+		buffer.push(item)
+		index = index + 1
+	end while
+	
+	if (buffer.len > 0) then
+		tempFile.set_content(buffer.join(NEW_LINE_OPERATOR))
+		normalizedLines = normalizedLines + tempFile.get_content.split(NEW_LINE_OPERATOR)
+	end if
+	
+	tempFile.set_content("")
+	
+	return normalizedLines
+end function
+
 Compiler.compile = function(shell)
 	pathHelper = new Path
 	fs = (new FS).constructor(self.computer)
 	buildPath = pathHelper.join(Config.getTempFolder(), self.buildId)
 	buildPathFull = pathHelper.join(buildPath, self.getBuildFilePath())
-	
+	noUglify = Config.get("NO_UGLIFY")
 	self.computer.create_folder(Config.getTempFolder(), self.buildId)
 	
 	print("Build id: " + self.buildId)
@@ -681,22 +1366,81 @@ Compiler.compile = function(shell)
 	end if
 	
 	content = self.preprocess()
+	normalizedContent = self.normalize(content, newFile)
 	
-	newFile.set_content(content)
+	if (not noUglify) then
+		uglifier = (new Uglifier).constructor()
+		uglifiedLines = uglifier.minify(normalizedContent)
+		
+		print("Removed " + uglifier.wordsSaved + " characters...")
+		content = uglifiedLines
+	end if
+	
+	preparedContent = content.join(NEW_LINE_OPERATOR)
+	
+	if (preparedContent.len > self.MAX_FILE_SIZE) then
+		self.computer.File(buildPath).delete
+		if (noUglify) then print("Try enabling uglify...")
+		(new Error).constructor("Your file is $0 characters too much...", [preparedContent.len - self.MAX_FILE_SIZE]).throw()
+	end if
+	
+	newFile.set_content(preparedContent)
 	
 	print("Building in " + Config.getBinFolder() + "...")
 	
 	buildReport = shell.build(buildPathFull, Config.getBinFolder())
+	
+	if (buildReport.len > 0) then
+		lineIndex = buildReport.indexOf("line")
+		
+		if (lineIndex != null) then
+			index = lineIndex + 5
+			lineNumber = ""
+			
+			while Uglifier.NUMBER_CHARACTERS.indexOf(buildReport[index]) != null
+				lineNumber = lineNumber + buildReport[index]
+				index = index + 1
+			end while
+			
+			lineNumber = lineNumber.to_int
+			
+			codeArea = content[lineNumber - 20:lineNumber + 20]
+			report = ["<color=#ff0000>Possible culprit:</color>"]
+			
+			index = lineNumber - 20
+			for line in codeArea
+				if (index == lineNumber) then
+					report.push("<color=#ff0000>[" + index + "] > " + line + "</color>")
+				else
+					report.push("<color=#FFF>[" + index + "] > " + line + "</color>")
+				end if
+				
+				index = index + 1
+			end for
+			
+			print(report.join(NEW_LINE_OPERATOR))
+		end if
+		
+		shouldDelete = user_input("Do you want to keep the build file? (Y/n)") != "Y"
+		if (shouldDelete) then self.computer.File(buildPath).delete
+		(new Error).constructor("Built failed: $0", [buildReport]).throw()
+	end if
+	
+	binary = Path.join(Config.getBinFolder(), self.getBinaryFilePath())
+	
+	if (Config.get("SOURCE_ONLY")) then
+		self.computer.File(binary).delete
+		binary = Path.join(Config.getBinFolder(), self.getBuildFilePath())
+		self.computer.File(buildPathFull).copy(Config.getBinFolder(), self.getBuildFilePath())
+	end if
 	
 	if (Config.get("NO_OUTPUT")) then
 		debug("Remove " + buildPath + "...")
 		self.computer.File(buildPath).delete
 	end if
 	
-	compiledBuildPathFull = pathHelper.join(Config.getBinFolder(), self.getBinaryFilePath())
-	if self.computer.File(compiledBuildPathFull) == null then
-		(new Error).constructor("Built failed: $0", [buildReport]).throw()
-	end if
+	print("Build time: " + time)
+	print("Binary got saved in " + binary + "...")
 end function
 
 main = function(filePath)
@@ -730,7 +1474,10 @@ argDefinitions.push((new Arg).constructor("b", "bin-folder", ArgType.VALUE, "Bin
 argDefinitions.push((new Arg).constructor("se", "script-extension", ArgType.VALUE, "Script extension"))
 argDefinitions.push((new Arg).constructor("no", "no-output",  ArgType.FLAG, "No output"))
 argDefinitions.push((new Arg).constructor("sx", "suffix",  ArgType.VALUE, "Suffix"))
-argDefinitions.push((new Arg).constructor("ev", "env-file",  ArgType.VALUE, "Environment varibales file"))
+argDefinitions.push((new Arg).constructor("ev", "env-file",  ArgType.MULTIPLE, "Environment varibales file"))
+argDefinitions.push((new Arg).constructor("nu", "no-uglify",  ArgType.FLAG, "No uglify/minimizing"))
+argDefinitions.push((new Arg).constructor("so", "source-only",  ArgType.FLAG, "Only output source instead of binary"))
+argDefinitions.push((new Arg).constructor("o", "obfuscate",  ArgType.FLAG, "Obfuscate code"))
 
 helpBlock = []
 
@@ -749,8 +1496,12 @@ argv = (new Argv).constructor(argDefinitions, help)
 
 argv.parse()
 
-if (argv.getWithKey("help") == true) then
+if (argv.getWithKey("help")) then
 	exit(help)
+end if
+
+if (argv.getWithKey("obfuscate")) then
+	Uglifier.GENERATOR_CHARACTERS = generateChars(5000, 10000)
 end if
 
 for argDefinition in argDefinitions
@@ -762,3 +1513,6 @@ end for
 debug("Start compiling...")
 main(argv.get(0, true))
 exit("Done compiling...")
+
+
+

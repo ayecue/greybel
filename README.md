@@ -1,4 +1,4 @@
-# Greybel 0.2.0.0
+# Greybel 0.4.0.0
 
 GreyScript preprocessor ([GreyHack](https://store.steampowered.com/app/605230/Grey_Hack/). Which adds new features to GreyScript.
 
@@ -9,7 +9,9 @@ Features:
 - building creates temporary file for better debugging
 - wraps imported files in function block to prevent variable shadowing
 - include which unlike import just copy paste its content
-- envar which puts values from an env file into the script
+- envar which puts values from one file or multiple env files into the script
+- minimizing your script, depending on the size of your project you can save up to 40%
+- please note that minimizing can take some time depending on the file size if it's to slow turn it off via `--no-uglify` (I'll improve speed with the next updates)
 
 # Install
 
@@ -29,7 +31,7 @@ This should create all necessary folders and files.
 # CLI Usage
 ```
 Compiler CLI
-Version: 0.2.0.0
+Version: 0.4.0.0
 Example: compile myscriptfile
 
 -h --help - Print help
@@ -43,9 +45,10 @@ Example: compile myscriptfile
 -no --no-output - No output
 -sx --suffix - Suffix
 -ev --env-file - Environment varibales file
+-nu --no-uglify - No uglify/minimizing
+-so --source-only - Only output source instead of binary 
+-o --obfuscate - Obfuscate code
 ```
-
-**OUTDATED**: Keep in mind that the script file has to be in the script folder which is defined in the configuration file. By default it should be `/home/user-folder/scripts`. The compile is not using an absolute path but the relative path from the script folder. (**Since version 0.2.0.0 myscriptfile just uses the given filepath**)
 
 ## Examples:
 ### Most common build command:
@@ -108,9 +111,12 @@ hello() //prints "Hello world!"
 ```
 
 ## Envar
-Envar will put environment variables into your script. Just keep in mind to use the `--env-file /path/env.conf` parameter. This might be useful if you want to use different variables for different environments. Keep in mind that there's also a `--suffix local` parameter which might be helpful for this as well.
+Envar will put environment variables into your script. Just keep in mind to use the `--env-file /path/env.conf` parameter. This might be useful if you want to use different variables for different environments. Keep in mind that there's also a `--suffix local` parameter which might be helpful for this as well. Since `0.4.0.0` you can use multiple env files `--env-file /path/default.conf --env-file /path/env.conf`.
+
+Another feature with `0.4.0.0` is that you can actually can put comments into the env file.
 ```
 //File path: env.conf
+# MY COMMENT
 random=SOME_VALUE
 
 //File path: example.src
@@ -133,7 +139,7 @@ BOILERPLATE_FOLDER=boilerplates/$0.src
 BIN_FOLDER=/usr/bin
 SCRIPT_EXTENSION=src
 DEBUG=false
-VERSION=0.2.0.0
+VERSION=0.4.0.0
 ```
 
 # Planned features
