@@ -1,4 +1,4 @@
-# Greybel 0.4.0.0
+# Greybel 0.4.1.0
 
 GreyScript preprocessor ([GreyHack](https://store.steampowered.com/app/605230/Grey_Hack/). Which adds new features to GreyScript.
 
@@ -9,9 +9,9 @@ Features:
 - building creates temporary file for better debugging
 - wraps imported files in function block to prevent variable shadowing
 - include which unlike import just copy paste its content
-- envar which puts values from one file or multiple env files into the script
+- envar which puts values from one file, multiple env files or building params into the script
 - minimizing your script, depending on the size of your project you can save up to 40%
-- please note that minimizing can take some time depending on the file size if it's to slow turn it off via `--no-uglify` (I'll improve speed with the next updates)
+- please note that minimizing can take some time depending on the file size if it's to slow turn it off via `--no-uglify` (speed improvements in the next updates with tokenization instead of actual string operations - unsure how much that will save though)
 
 # Install
 
@@ -111,9 +111,13 @@ hello() //prints "Hello world!"
 ```
 
 ## Envar
-Envar will put environment variables into your script. Just keep in mind to use the `--env-file /path/env.conf` parameter. This might be useful if you want to use different variables for different environments. Keep in mind that there's also a `--suffix local` parameter which might be helpful for this as well. Since `0.4.0.0` you can use multiple env files `--env-file /path/default.conf --env-file /path/env.conf`.
+Envar will put environment variables into your script. Just keep in mind to use the `--env-file /path/env.conf` parameter. This might be useful if you want to use different variables for different environments. Keep in mind that there's also a `--suffix local` parameter which might be helpful for this as well.
+
+Since `0.4.0.0` you can use multiple env files `--env-file /path/default.conf --env-file /path/env.conf`.
 
 Another feature with `0.4.0.0` is that you can actually can put comments into the env file.
+
+Since `0.4.1.0` you can use `--env-var MY_VAR=MY_VALUE` to set environment variables as well.
 ```
 //File path: env.conf
 # MY COMMENT
@@ -139,7 +143,7 @@ BOILERPLATE_FOLDER=boilerplates/$0.src
 BIN_FOLDER=/usr/bin
 SCRIPT_EXTENSION=src
 DEBUG=false
-VERSION=0.4.0.0
+VERSION=0.4.1.0
 ```
 
 # Planned features

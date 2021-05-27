@@ -2,17 +2,10 @@ BACKSLASH_CODE = 92
 NEW_LINE_OPERATOR = char(BACKSLASH_CODE) + "n"
 ARGV_OPERATOR = "-"
 
-loadConfigFile = function(file, map)
-	path = file
-	if (typeof(file) == "File") then path = file.path
-	if (typeof(file) == "string") then file = get_shell.host_computer.File(path)
+readVarLines = function(varLines, map)
 	if (map == null) then map = {}
-	if (file == null) then (new Error).constructor("No config in $0...", [path]).throw()
 	
-	content = file.get_content
-	lines = content.split(NEW_LINE_OPERATOR)
-	
-	for line in lines
+	for line in varLines
 		line = line.trim
 		if (line == "" or line[0] == "#") then continue
 		def = line.split("=")
@@ -22,6 +15,15 @@ loadConfigFile = function(file, map)
 	end for
 	
 	return map
+end function
+
+loadConfigFile = function(file, map)
+	path = file
+	if (typeof(file) == "File") then path = file.path
+	if (typeof(file) == "string") then file = get_shell.host_computer.File(path)
+	if (file == null) then (new Error).constructor("No config in $0...", [path]).throw()
+	
+	return readVarLines(file.get_content.split(NEW_LINE_OPERATOR), map)
 end function
 
 generateChars = function(from, to)
@@ -260,7 +262,7 @@ Argv.parse = function()
 			isValue = type == ArgType.VALUE
 			isMultiple = type == ArgType.MULTIPLE
 			isFlag = type == ArgType.FLAG
-
+			
 			if (isValue or isMultiple) then
 				index = index + 1
 				value = args[index]
@@ -337,12 +339,12 @@ Random.gen = function(min, max, seed, inc)
 		ps.value = val
 		return val
 	end if
-
+	
 	seedVal = 0
 	for char in seed
 		seedVal = seedVal + char.code
 	end for
-
+	
 	val = floor((rnd(seedVal) * (max - min)) + min)
 	pool[seed] = me.createPool(seedVal, val)
 	
@@ -423,15 +425,22 @@ EnvironmentVariables = {}
 
 EnvironmentVariables.constructor = function()
 	self.map = {}
-	self.files = Config.get("ENV_FILE")
-	if (self.files != null) then self.load()
+	self.load()
 	return self
 end function
 
 EnvironmentVariables.load = function()
-	for file in self.files
-		self.map = loadConfigFile(file, self.map)
-	end for
+	files = Config.get("ENV_FILE")
+	
+	if (files != null) then
+		for file in files
+			self.map = loadConfigFile(file, self.map)
+		end for
+	end if
+	
+	vars = Config.get("ENV_VAR")
+	if (vars != null) then self.map = readVarLines(vars, self.map)
+	
 	return self.map
 end function
 
@@ -733,11 +742,11 @@ end function
 
 Uglifier.getQuoteBoundaries = function(line)
 	quoteBoundaryCache = self.quoteBoundaryCache
-
+	
 	if (quoteBoundaryCache.hasIndex(line)) then
 		return quoteBoundaryCache[line]
 	end if
-
+	
 	quotes = {"ranges": [], "isOpen": false}
 	quoteChar = self.SPECIAL_CHARACTERS.QUOTE
 	currentQuoteIndex = line.indexOf(quoteChar)
@@ -759,7 +768,7 @@ Uglifier.getQuoteBoundaries = function(line)
 	end if
 	
 	quoteBoundaryCache[line] = quotes
-
+	
 	return quotes
 end function
 
@@ -901,21 +910,21 @@ Uglifier.removeWhitespaces = function(line)
 	lOps = self.L_TRIM_OPERATORS + safeOps
 	rOps = self.R_TRIM_OPERATORS + safeOps
 	spaceIndex = line.indexOf(space)
-
+	
 	while spaceIndex != null
 		quoteBoundaries = self.getQuoteBoundaries(line)
 		if (self.isInsideBoundaries(quoteBoundaries, spaceIndex)) then
 			spaceIndex = line.indexOf(space, spaceIndex)
 			continue
 		end if
-
+		
 		before = line[spaceIndex - 1]
 		after = line[spaceIndex + 1]
 		if (lOps.indexOf(before) == null and rOps.indexOf(after) == null) then
 			spaceIndex = line.indexOf(space, spaceIndex)
 			continue
 		end if
-
+		
 		isEOL = line.len - 1 == spaceIndex
 		isStart = spaceIndex == 0
 		startLine = ""
@@ -926,7 +935,7 @@ Uglifier.removeWhitespaces = function(line)
 		self.wordsSaved = self.wordsSaved + 1
 		spaceIndex = line.indexOf(space, spaceIndex - 1)
 	end while
-
+	
 	return line
 end function
 
@@ -966,7 +975,7 @@ Uglifier.minify = function(lines)
 		
 		line = self.removeWhitespaces(line)
 		line = self.replaceVariables(line)
-
+		
 		newLines.push(line)
 	end for
 	
@@ -1082,11 +1091,11 @@ AST.findCommands = function(line, index)
 	str = (new String).constructor(line)
 	commands = []
 	startIndex = str.indexOf(commandStart)
-		
+	
 	while startIndex != null
 		endIndex = str.indexOf(commandEnd, startIndex)
 		if (endIndex == null) then break
-
+		
 		markup =  str.substr(startIndex, endIndex + 1)
 		command = markup.substr(1, markup.indexOf(" "))
 		key = command.toString()
@@ -1096,12 +1105,12 @@ AST.findCommands = function(line, index)
 			entry = (new ASTCommand).constructor(index, markup, key, new action)
 			commands.push(entry)
 		end if
-
+		
 		startIndex = str.indexOf(commandStart, endIndex)
 	end while
-
+	
 	if (commands.len == 0) then return null
-
+	
 	return commands
 end function
 
@@ -1475,6 +1484,7 @@ argDefinitions.push((new Arg).constructor("se", "script-extension", ArgType.VALU
 argDefinitions.push((new Arg).constructor("no", "no-output",  ArgType.FLAG, "No output"))
 argDefinitions.push((new Arg).constructor("sx", "suffix",  ArgType.VALUE, "Suffix"))
 argDefinitions.push((new Arg).constructor("ev", "env-file",  ArgType.MULTIPLE, "Environment varibales file"))
+argDefinitions.push((new Arg).constructor("vr", "env-var",  ArgType.MULTIPLE, "Environment variables"))
 argDefinitions.push((new Arg).constructor("nu", "no-uglify",  ArgType.FLAG, "No uglify/minimizing"))
 argDefinitions.push((new Arg).constructor("so", "source-only",  ArgType.FLAG, "Only output source instead of binary"))
 argDefinitions.push((new Arg).constructor("o", "obfuscate",  ArgType.FLAG, "Obfuscate code"))
@@ -1513,6 +1523,4 @@ end for
 debug("Start compiling...")
 main(argv.get(0, true))
 exit("Done compiling...")
-
-
 
