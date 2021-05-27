@@ -38,10 +38,10 @@ function write_file() {
   echo "lines = []" >> $file
   n=1
   while read -r line || [ -n "$line" ]; do
-    find="\""
-    replace="\"\""
-    newLines=$(sed "s+${find}+${replace}+g" <<< "$line")
-    echo "lines.push(\"$newLines\")" >> $file
+    line=$(tr -d '\r\n' <<< "$line")
+    line=$(sed 's/\"/\"\"/g' <<< "$line")
+
+    echo "lines.push(\"$line\")" >> $file
     n=$((n+1))
   done < $1
   echo "file.set_content(lines.join(\"\n\"))" >> $file
