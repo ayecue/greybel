@@ -1,5 +1,7 @@
 # Greybel 0.4.1.0
 
+## Deprecated in favor of [greybel-js](https://github.com/ayecue/greybel-js)
+
 GreyScript preprocessor ([GreyHack](https://store.steampowered.com/app/605230/Grey_Hack/). Which adds new features to GreyScript.
 
 For examples lookup [this repository](https://github.com/ayecue/greyscript-library).
